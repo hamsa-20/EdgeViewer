@@ -1,1 +1,7 @@
 /build
+.gradle/
+opencv/
+*.so
+*.a
+*.zip
+*.jar
