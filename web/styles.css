@@ -1,0 +1,60 @@
+/* Page background */
+body {
+    margin: 0;
+    background: #111827;
+    font-family: "Segoe UI", Roboto, sans-serif;
+    color: white;
+    display: flex;
+    justify-content: center;
+    padding: 40px 10px;
+}
+
+/* Main container */
+.container {
+    width: 100%;
+    max-width: 600px;
+    text-align: center;
+}
+
+/* Title */
+h1 {
+    font-size: 1.8rem;
+    margin-bottom: 25px;
+    color: #38bdf8;
+    text-shadow: 0 0 10px #0ea5e9;
+}
+
+/* Upload button */
+.upload-btn {
+    display: inline-block;
+    padding: 12px 25px;
+    background: #2563eb;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: 0.2s ease;
+    margin-bottom: 25px;
+}
+
+.upload-btn:hover {
+    background: #1d4ed8;
+}
+
+/* Frame preview box */
+.preview-box {
+    width: 100%;
+    padding: 18px;
+    background: #1f2937;
+    border-radius: 12px;
+    border: 1px solid #4b5563;
+    box-shadow: 0 0 15px #0008;
+}
+
+/* Canvas */
+canvas {
+    width: 100%;
+    max-height: 500px;
+    background: #000;
+    border-radius: 8px;
+}

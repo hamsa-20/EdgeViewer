@@ -1,0 +1,12 @@
+{
+  "name": "edgeviewer-web",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "tsc",
+    "start": "npx http-server -c-1"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "http-server": "^14.1.1"
+  }
+}
