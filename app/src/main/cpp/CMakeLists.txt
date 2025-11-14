@@ -3,14 +3,37 @@ cmake_minimum_required(VERSION 3.10.2)
 project("edgeviewer")
 
 # --- Set OpenCV Directory ---
-# ${CMAKE_SOURCE_DIR} is: app/src/main/cpp
-# ../../.. takes us to the project root (EdgeViewer)
-# Then we go into opencv/sdk/native/jni
-set(OpenCV_DIR ${CMAKE_SOURCE_DIR}/../../../../opencv/sdk/native/jni)
+# Try different possible paths for OpenCV
+set(OPENCV_PATHS
+        ${CMAKE_SOURCE_DIR}/../../../opencv/sdk/native/jni
+        ${CMAKE_SOURCE_DIR}/../../../../opencv/sdk/native/jni
+        ${CMAKE_SOURCE_DIR}/../../../../../opencv/sdk/native/jni
+        ${CMAKE_SOURCE_DIR}/../../../../../../opencv/sdk/native/jni
+)
 
+# Find OpenCV directory
+foreach(OPENCV_PATH ${OPENCV_PATHS})
+    if(EXISTS ${OPENCV_PATH})
+        set(OpenCV_DIR ${OPENCV_PATH})
+        message(STATUS "Found OpenCV at: ${OpenCV_DIR}")
+        break()
+    endif()
+endforeach()
+
+if(NOT OpenCV_DIR)
+    message(FATAL_ERROR "OpenCV not found. Please check the OpenCV Android SDK path.")
+endif()
 
 # --- Find OpenCV ---
 find_package(OpenCV REQUIRED)
+
+if(OpenCV_FOUND)
+    message(STATUS "OpenCV found: ${OpenCV_VERSION}")
+    message(STATUS "OpenCV libraries: ${OpenCV_LIBS}")
+    message(STATUS "OpenCV includes: ${OpenCV_INCLUDE_DIRS}")
+else()
+    message(FATAL_ERROR "OpenCV package not found")
+endif()
 
 # --- Build Native Library ---
 add_library(

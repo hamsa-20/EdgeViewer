@@ -1,6 +1,9 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+
+    // REQUIRED for Compose + Kotlin 2.0
+    id("org.jetbrains.kotlin.plugin.compose") version "2.0.0"
 }
 
 android {
@@ -15,10 +18,16 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
         externalNativeBuild {
             cmake {
-                cppFlags += ""
+                cppFlags.addAll(listOf("-std=c++11"))
+                arguments.addAll(listOf("-DANDROID_STL=c++_shared"))
             }
+        }
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
         }
     }
 
@@ -31,31 +40,58 @@ android {
             )
         }
     }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+
+    buildFeatures {
+        compose = true
+        viewBinding = true
     }
-    kotlinOptions {
-        jvmTarget = "1.8"
+
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
     }
+
+    packaging {
+        resources.excludes += "**/libc++_shared.so"
+    }
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
         }
     }
-     buildFeatures {
-        viewBinding = true
+
+    sourceSets["main"].jniLibs.srcDirs("../opencv/sdk/native/libs")
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = "11"
     }
 }
 
 dependencies {
-    implementation(libs.androidx.core.ktx)
+
+    // Compose BOM
+    implementation(platform("androidx.compose:compose-bom:2024.04.01"))
+
+    // Compose core
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // Compose activity
+    implementation("androidx.activity:activity-compose:1.9.0")
+
+    // Essentials
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation("androidx.core:core-ktx:1.13.1")
+
+    // Old libs (safe)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
-    implementation(libs.androidx.activity)
-    implementation(libs.androidx.constraintlayout)
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
 }
