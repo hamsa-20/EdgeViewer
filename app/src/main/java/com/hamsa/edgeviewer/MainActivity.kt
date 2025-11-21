@@ -1,11 +1,11 @@
 package com.hamsa.edgeviewer
-import androidx.compose.ui.graphics.nativeCanvas
 
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.util.Size
+import android.view.TextureView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,48 +23,43 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
+import java.nio.ByteBuffer
 
 class MainActivity : ComponentActivity() {
+
     private lateinit var cameraHelper: CameraHelper
 
-    // UI state
     private var isCameraActive by mutableStateOf(false)
     private var frameInfo by mutableStateOf("No frames received")
     private var processingTime by mutableStateOf(0L)
     private var frameCount by mutableStateOf(0)
     private var edgeBitmap by mutableStateOf<Bitmap?>(null)
+    private var previewTextureView by mutableStateOf<TextureView?>(null)
 
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            setupCamera()
-        } else {
-            Toast.makeText(this, "Camera permission required", Toast.LENGTH_LONG).show()
-            frameInfo = "Camera permission denied"
+    private val requestPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) setupCamera()
+            else Toast.makeText(this, "Camera permission required", Toast.LENGTH_LONG).show()
         }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
             EdgeViewerTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
+                Surface(Modifier.fillMaxSize()) {
                     EdgeViewerUI(
                         isCameraActive = isCameraActive,
                         frameInfo = frameInfo,
                         processingTime = processingTime,
                         frameCount = frameCount,
                         edgeBitmap = edgeBitmap,
+                        previewView = previewTextureView,
                         onStartCamera = { startCamera() },
                         onStopCamera = { stopCamera() },
                         onRequestPermission = { requestCameraPermission() }
@@ -77,114 +72,91 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkCameraPermission() {
-        when {
-            ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED -> {
-                setupCamera()
-            }
-            else -> {
-                requestPermissionLauncher.launch(Manifest.permission.CAMERA)
-            }
-        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            == PackageManager.PERMISSION_GRANTED
+        ) setupCamera()
+        else requestPermissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
     private fun setupCamera() {
-        // cameraHelper is a small stub below — replace with your actual Camera helper
+
         cameraHelper = CameraHelper(this, Size(640, 480)) { nv21, width, height, rotation ->
-            val startTime = System.currentTimeMillis()
+
+            val start = System.currentTimeMillis()
             frameCount++
 
-            // Process the frame with rotation information (calls native stub below)
-            processFrame(nv21, width, height, rotation)
+            if (nv21.isEmpty()) return@CameraHelper
 
-            processingTime = System.currentTimeMillis() - startTime
-            frameInfo = "Frame: ${width}x${height} | Rotation: ${rotation}° | FPS: ${calculateFPS()}"
+            try {
+                // native processing only takes 3 params
+                val out = NativeBridge.processFrameNV21(nv21, width, height, rotation)
+
+
+                if (out != null && out.size >= width * height * 4) {
+
+                    val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    bmp.copyPixelsFromBuffer(ByteBuffer.wrap(out))
+
+                    // rotate to match camera preview
+                    val rotatedBmp = rotateBitmap(bmp, rotation)
+
+                    runOnUiThread {
+                        edgeBitmap = rotatedBmp
+                    }
+                }
+
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
+            processingTime = System.currentTimeMillis() - start
+            frameInfo = "Frame: ${width}x${height} | Rot ${rotation}° | FPS ${calculateFPS()}"
         }
+
+        previewTextureView = cameraHelper.previewTextureView
     }
 
     private fun startCamera() {
-        if (!::cameraHelper.isInitialized) {
-            setupCamera()
-        }
+        if (!::cameraHelper.isInitialized) setupCamera()
         cameraHelper.start()
         isCameraActive = true
-        frameInfo = "Camera starting..."
     }
 
     private fun stopCamera() {
-        if (::cameraHelper.isInitialized) {
-            cameraHelper.stop()
-        }
+        if (::cameraHelper.isInitialized) cameraHelper.stop()
         isCameraActive = false
-        frameInfo = "Camera stopped"
     }
 
-    private fun requestCameraPermission() {
+    private fun requestCameraPermission() =
         requestPermissionLauncher.launch(Manifest.permission.CAMERA)
-    }
-
-    private fun processFrame(nv21: ByteArray, width: Int, height: Int, rotation: Int) {
-        // Pass to your native code with rotation information (stub below).
-        // Replace EdgeViewerNative.processFrame(...) with your JNI call which writes the result
-        EdgeViewerNative.processFrame(nv21, width, height, rotation)
-
-        // For now, update UI with a placeholder generated bitmap.
-        updateEdgeDisplay(width, height)
-    }
-
-    private fun updateEdgeDisplay(width: Int, height: Int) {
-        // placeholder gradient bitmap — replace with real processed image provided by native code
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        for (x in 0 until width step 2) {
-            for (y in 0 until height step 2) {
-                val intensity = ((x + y) % 255).toFloat() / 255f
-                val gray = (intensity * 255).toInt()
-                val color = android.graphics.Color.rgb(gray, gray, gray)
-                bitmap.setPixel(x, y, color)
-            }
-        }
-        edgeBitmap = bitmap
-    }
 
     private var lastFpsTime = System.currentTimeMillis()
     private var lastFrameCount = 0
+
     private fun calculateFPS(): Int {
-        // moving / sampled FPS to be stable
         val now = System.currentTimeMillis()
-        val delta = now - lastFpsTime
-        if (delta >= 1000) {
-            val frames = frameCount - lastFrameCount
+        if (now - lastFpsTime >= 1000) {
+            val fps = frameCount - lastFrameCount
             lastFrameCount = frameCount
             lastFpsTime = now
-            return frames.coerceAtMost(60)
+            return fps
         }
         return 0
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (isCameraActive && ::cameraHelper.isInitialized) {
-            cameraHelper.start()
-        }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        if (::cameraHelper.isInitialized) {
-            cameraHelper.stop()
-        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         if (::cameraHelper.isInitialized) {
             cameraHelper.stop()
+            cameraHelper.shutdown()
         }
-        cameraHelper.shutdown()
     }
 
+    private fun rotateBitmap(src: Bitmap, rotation: Int): Bitmap {
+        if (rotation == 0) return src
+        val m = android.graphics.Matrix()
+        m.postRotate(rotation.toFloat())
+        return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
+    }
 }
 
 @Composable
@@ -194,164 +166,85 @@ fun EdgeViewerUI(
     processingTime: Long,
     frameCount: Int,
     edgeBitmap: Bitmap?,
+    previewView: TextureView?,
     onStartCamera: () -> Unit,
     onStopCamera: () -> Unit,
     onRequestPermission: () -> Unit
 ) {
-    val context = LocalContext.current
-    var permissionStatus by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-
-    // keep permission status updated periodically
-    LaunchedEffect(Unit) {
-        while (true) {
-            permissionStatus = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED
-            delay(1000)
-        }
-    }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState())
+        Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())
     ) {
-        Text(
-            text = "Edge Viewer",
-            style = MaterialTheme.typography.headlineLarge,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
 
-        // Permission card
-        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Camera Permission", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = if (permissionStatus) "Granted ✅" else "Denied ❌",
-                    color = if (permissionStatus) Color(0xFF2E7D32) else Color.Red
-                )
-                if (!permissionStatus) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = onRequestPermission) { Text("Request Permission") }
+        Text("Edge Viewer", style = MaterialTheme.typography.headlineLarge)
+
+        Spacer(Modifier.height(16.dp))
+
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+
+                Text("Camera Preview")
+                Spacer(Modifier.height(10.dp))
+
+                if (previewView != null) {
+                    AndroidView(
+                        factory = { previewView },
+                        modifier = Modifier.fillMaxWidth().height(300.dp)
+                    )
                 }
             }
         }
 
-        // Controls
-        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Camera Controls", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-                if (permissionStatus) {
-                    if (isCameraActive) {
-                        Button(onClick = onStopCamera, modifier = Modifier.fillMaxWidth()) { Text("Stop Camera") }
-                    } else {
-                        Button(onClick = onStartCamera, modifier = Modifier.fillMaxWidth()) { Text("Start Camera") }
-                    }
-                }
-                if (isCameraActive) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                }
-            }
-        }
+        Spacer(Modifier.height(16.dp))
 
-        // Info
-        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Frame Information", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Status: $frameInfo")
-                Text("Processing Time: ${processingTime}ms")
-                Text("Total Frames: $frameCount")
-            }
-        }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
 
-        // Preview
-        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Edge Detection Preview", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-                Box(modifier = Modifier.fillMaxWidth().height(300.dp).background(Color.Black)) {
+                Text("Edge Detection Output")
+                Spacer(Modifier.height(10.dp))
+
+                Box(
+                    Modifier.fillMaxWidth().height(300.dp).background(Color.Black)
+                ) {
                     if (edgeBitmap != null) {
-                        EdgeDetectionCanvas(bitmap = edgeBitmap!!)
+                        Canvas(Modifier.fillMaxSize()) {
+                            drawImage(
+                                image = edgeBitmap.asImageBitmap(),
+                                dstSize = IntSize(size.width.toInt(), size.height.toInt())
+                            )
+                            drawRect(Color.White, style = Stroke(2f))
+                        }
                     } else {
-                        Text("No edge data available", color = Color.White, modifier = Modifier.align(Alignment.Center))
+                        Text("No edge data", color = Color.White, modifier = Modifier.align(Alignment.Center))
                     }
                 }
-                edgeBitmap?.let {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Resolution: ${it.width}x${it.height}", fontSize = 12.sp)
-                }
             }
         }
 
-        // Instructions
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Instructions", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("1. Grant camera permission")
-                Text("2. Click 'Start Camera' to begin")
-                Text("3. View edge detection results in real-time")
-                Text("4. Use 'Stop Camera' to pause processing")
+        Spacer(Modifier.height(16.dp))
+
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+
+                Text("Camera Controls")
+                Spacer(Modifier.height(10.dp))
+
+                if (isCameraActive)
+                    Button(onClick = onStopCamera) { Text("Stop Camera") }
+                else
+                    Button(onClick = onStartCamera) { Text("Start Camera") }
+
+                Spacer(Modifier.height(10.dp))
+
+                Text("Status: $frameInfo")
+                Text("Processing: ${processingTime}ms")
+                Text("Frames: $frameCount")
             }
         }
-    }
-}
-
-@Composable
-fun EdgeDetectionCanvas(bitmap: Bitmap) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val imageBitmap = bitmap.asImageBitmap()
-        // draw the bitmap to fill the available size (scaled)
-        drawImage(
-            image = imageBitmap,
-            dstSize = IntSize(size.width.toInt(), size.height.toInt())
-        )
-
-        // draw border
-        drawRect(color = Color.White, style = Stroke(width = 2f))
-
-        // draw label (use nativeCanvas for text)
-        drawContext.canvas.nativeCanvas.drawText(
-            "Edge Detection Output",
-            10f,
-            30f,
-            android.graphics.Paint().apply {
-                color = android.graphics.Color.WHITE
-                textSize = 28f
-            }
-        )
     }
 }
 
 @Composable
 fun EdgeViewerTheme(content: @Composable () -> Unit) {
-    // Minimal Material3 wrapper — you can replace with your project theme
-    MaterialTheme(
-        content = content
-    )
-}
-
-/*
-  ===== STUBS =====
-  The following are tiny stubs so the file compiles. Replace these with your real camera helper
-  and native JNI bridge that you already had for the original project.
-*/
-
-
-
-object EdgeViewerNative {
-    // stub: implement JNI to call C++ processing and return result to UI (or write to shared buffer)
-    fun processFrame(nv21: ByteArray, width: Int, height: Int, rotation: Int) {
-        // no-op in stub
-    }
+    MaterialTheme(content = content)
 }
