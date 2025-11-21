@@ -21,7 +21,7 @@ An optional web interface allows browser-based image edge detection using OpenCV
 
 ## YouTube Demo
 
-(https://www.youtube.com/shorts/EDxmlGY6Lww
+https://www.youtube.com/shorts/EDxmlGY6Lww
 
 ---
 
@@ -270,6 +270,7 @@ npx tsc --noEmit
 - Edge  
 
 ---
+
 
 
 
