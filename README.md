@@ -13,8 +13,8 @@ An optional web interface allows browser-based image edge detection using OpenCV
 
 ## Screenshots
 
-| Camera Preview | Edge Output | Additional UI |
-|----------------|-------------|----------------|
+| Camera Preview | Edge Output | 
+|----------------|-------------|
 | ![](images/screen1.jpg) | ![](images/screen2.jpg) |
 
 ---
@@ -270,6 +270,7 @@ npx tsc --noEmit
 - Edge  
 
 ---
+
 
 
 
